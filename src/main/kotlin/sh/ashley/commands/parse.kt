@@ -1,19 +1,30 @@
 package sh.ashley.commands
 
 import kotlin.reflect.KClass
+import kotlin.reflect.full.declaredFunctions
+import kotlin.reflect.full.isSubclassOf
 
 /**
  * @author ashley
  * @since 2019-03-20 19:34
  */
-interface Parser<T: Any> {
+interface Parser<T : Any> {
     val parsedClass: KClass<T>
     fun parse(input: String): T
     fun isValidInput(input: String): Boolean
 }
 
-val <T: Any> KClass<T>.parser: Parser<T>?
-    get() = parsers.firstOrNull { it.parsedClass == this } as Parser<T>?
+class EnumParser<T : Enum<*>>(override val parsedClass: KClass<T>) : Parser<T> {
+    private val values = parsedClass.declaredFunctions.first { it.name == "values" }.call() as Array<T>
+
+    override fun parse(input: String) = values.first { it.name.equals(input.trim().replace(' ', '_'), ignoreCase = true) }
+    override fun isValidInput(input: String) = values.any { it.name.equals(input.trim().replace(' ', '_'), ignoreCase = true) }
+}
+
+val <T : Any> KClass<T>.parser: Parser<T>?
+    get() = if (this.isSubclassOf(Enum::class))
+        EnumParser(this as KClass<Enum<*>>) as Parser<T>?
+    else parsers.firstOrNull { it.parsedClass == this } as Parser<T>?
 
 val parsers = mutableListOf<Parser<*>>(
     object : Parser<Int> {
@@ -48,8 +59,9 @@ val parsers = mutableListOf<Parser<*>>(
         override val parsedClass = Float::class
         override fun parse(input: String) = input.trim().toFloat()
         override fun isValidInput(input: String) =
-            input.count { it == '.' } <= 1
-                    && input.all { it.isDigit() || it == '.' }
+            input.count { it == '-' } <= 1
+                    && input.count { it == '.' } <= 1
+                    && input.all { it.isDigit() || it == '.' || it == '-' }
                     && input.isNotBlank()
     },
     object : Parser<Boolean> {

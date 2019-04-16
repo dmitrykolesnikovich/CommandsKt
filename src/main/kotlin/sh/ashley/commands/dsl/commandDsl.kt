@@ -1,7 +1,6 @@
 package sh.ashley.commands.dsl
 
 import sh.ashley.commands.ICommand
-import sh.ashley.commands.IFlag
 import sh.ashley.commands.IHandler
 import sh.ashley.commands.IParameter
 import kotlin.reflect.KClass
@@ -19,17 +18,15 @@ fun command(vararg aliases: String, block: DslCommand.() -> Unit): DslCommand {
 @CommandsDslMarker
 class DslCommand internal constructor(override val aliases: Array<out String>) : ICommand {
     override val handlers = arrayListOf<DslHandler>()
-    override val flags = arrayListOf<DslFlag<*>>()
-
-    inline fun <reified T: Any> flag(value: T, name: String = "", short: Char = Char.MIN_VALUE) {
-        flags += DslFlag(name, short, T::class, value, this)
-    }
 
     fun handler(name: String = "", short: Char = Char.MIN_VALUE, block: DslHandler.() -> Unit) {
         val handler = DslHandler(this, name, short)
         handler.block()
         handlers += handler
     }
+
+    override fun toString() =
+        if (aliases.isEmpty()) "(unnamed)" else aliases.joinToString()
 }
 
 @CommandsDslMarker
@@ -38,11 +35,13 @@ class DslHandler internal constructor(
     override val name: String = "",
     override val short: Char = Char.MIN_VALUE
 ) : IHandler {
-    override val parameters = arrayListOf<DslParameter>()
+    override val parameters = arrayListOf<DslParameter<*>>()
     private var executionCallback: DslExecutionContext.() -> Unit = {}
 
-    inline fun <reified T> parameter(name: String = "", short: Char = Char.MIN_VALUE, isRequired: Boolean = true) {
-        parameters += DslParameter(name, short, T::class, isRequired, this)
+    inline fun <reified T: Any> parameter(name: String = "", short: Char = Char.MIN_VALUE, isRequired: Boolean = true): DslParameter<T> {
+        val x = DslParameter(name, short, T::class, isRequired, this)
+        parameters += x
+        return x
     }
 
     fun onExecute(callback: DslExecutionContext.() -> Unit) {
@@ -53,13 +52,16 @@ class DslHandler internal constructor(
         val ctx = DslExecutionContext(cmd, params)
         executionCallback.invoke(ctx)
     }
+
+    override fun toString() =
+        if (name.isBlank()) if (short == Char.MIN_VALUE) "(unnamed)" else short.toString() else name
 }
 
 @CommandsDslMarker
-class DslParameter(
+class DslParameter<T: Any>(
     override val name: String = "",
     override val short: Char = Char.MIN_VALUE,
-    override val type: KClass<*>,
+    override val type: KClass<T>,
     override val required: Boolean,
     override val parent: IHandler
 ) : IParameter {
@@ -68,18 +70,12 @@ class DslParameter(
 }
 
 @CommandsDslMarker
-class DslFlag<T : Any>(
-    override val name: String,
-    override val short: Char,
-    override val type: KClass<T>,
-    override var value: T? = null,
-    override val parent: ICommand
-) : IFlag<T>
-
-@CommandsDslMarker
-class DslExecutionContext internal constructor(cmd: DslCommand, params: Map<IParameter, Any?>) {
+class DslExecutionContext internal constructor(cmd: DslCommand, private val params: Map<IParameter, Any?>) {
     val parameters = DslParameterStore(params)
-    val flags = DslFlagStore(cmd.flags)
+
+    fun <T: Any> DslParameter<T>.value(): T? {
+        return this@DslExecutionContext.params.getOrDefault(this, null) as T?
+    }
 }
 
 class DslParameterStore internal constructor(val params: Map<IParameter, Any?>) {
@@ -88,14 +84,6 @@ class DslParameterStore internal constructor(val params: Map<IParameter, Any?>) 
 
     operator fun get(flagShort: Char): Any? =
         params.filter { it.key.short.equals(flagShort, ignoreCase = true) }.ifEmpty { null }?.values?.first()
-}
-
-class DslFlagStore internal constructor(val params: Collection<IFlag<*>>) {
-    operator fun get(flagName: String): Any? =
-        params.filter { it.name.equals(flagName, ignoreCase = true) }.ifEmpty { null }?.first()?.value
-
-    operator fun get(flagShort: Char): Any? =
-        params.filter { it.short.equals(flagShort, ignoreCase = true) }.ifEmpty { null }?.first()?.value
 }
 
 @DslMarker

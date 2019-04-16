@@ -1,7 +1,6 @@
 package sh.ashley.commands
 
 import kotlin.reflect.KClass
-import kotlin.reflect.KClassifier
 
 /**
  * @author ashley
@@ -10,30 +9,21 @@ import kotlin.reflect.KClassifier
 interface ICommand {
     val aliases: Array<out String>
     val handlers: Collection<IHandler>
-    val flags: Collection<IFlag<*>>
 }
 
-interface IHandler {
-    val name: String
-    val short: Char
+interface IHandler : Named {
     val parameters: Collection<IParameter>
 
     fun execute(params: Map<IParameter, Any?>)
 }
 
-interface IFlag<T: Any> {
-    val name: String
-    val short: Char
-    val type: KClass<T>
-    val parent: ICommand
-
-    var value: T?
-}
-
-interface IParameter {
-    val name: String
-    val short: Char
-    val type: KClassifier
+interface IParameter : Named {
+    val type: KClass<*>
     val required: Boolean
     val parent: IHandler
+}
+
+interface Named {
+    val name: String
+    val short: Char
 }
